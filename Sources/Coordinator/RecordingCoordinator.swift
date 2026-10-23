@@ -187,19 +187,24 @@ final class RecordingCoordinator {
 
             let terms = vocabulary()
 
+            let cloud = activeCloud
             var cloudText = await streamed?.value
             var path = cloudText == nil ? "on-device" : "live"
-            if cloudText == nil, let cloud = activeCloud, let audio = session.lastRecording {
+            if cloudText == nil, let cloud, let audio = session.lastRecording {
                 cloudText = await cloud.transcribe(wav: audio, vocabulary: terms)
                 if cloudText != nil { path = "upload" }
             }
             NSLog("Yap: transcribed via \(path) in \(Int(Date().timeIntervalSince(releasedAt) * 1000)) ms after release")
 
-            if let cloudText {
+            if let cloudText, cloud?.cleansText == true {
                 // SMART mode already removed filler, applied corrections and the
                 // dictionary, and formatted lists.
                 text = cloudText
             } else {
+                // A cloud transcript as heard beats the on-device one, but still
+                // gets the same cleanup.
+                if let cloudText { text = cloudText }
+
                 // Deterministic passes first: instant, on device, no model needed.
                 text = FillerRemoval.strip(text)
                 if !terms.isEmpty {

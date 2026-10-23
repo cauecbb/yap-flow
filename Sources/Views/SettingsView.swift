@@ -13,7 +13,7 @@ struct SettingsView: View {
                 historySection
                 dictionarySection
                 shortcutSection
-                geminiSection
+                AISettingsSection()
                 languageSection
                 generalSection
                 inputSection
@@ -161,28 +161,6 @@ struct SettingsView: View {
         }
     }
 
-    private var geminiSection: some View {
-        @Bindable var app = app
-        return VStack(alignment: .leading, spacing: Theme.s3) {
-            SectionLabel("Cloud transcription")
-            Card(padding: Theme.s2) {
-                VStack(spacing: 0) {
-                    SettingsToggleRow(
-                        title: "Transcribe with Gemini",
-                        subtitle: "Mixed Portuguese and English, filler removed, lists formatted. "
-                            + "Audio goes to Google; falls back to on-device if it fails.",
-                        isOn: $app.geminiEnabled
-                    )
-                    .disabled(!app.gemini.hasKey)
-
-                    Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
-
-                    GeminiKeyRow(gemini: app.gemini)
-                }
-            }
-        }
-    }
-
     private var languageSection: some View {
         @Bindable var app = app
         return VStack(alignment: .leading, spacing: Theme.s3) {
@@ -274,15 +252,6 @@ struct SettingsView: View {
                         subtitle: "Play a cue when recording starts and stops.",
                         isOn: $app.soundsEnabled
                     )
-                    Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
-                    SettingsToggleRow(
-                        title: "Clean up transcripts",
-                        subtitle: app.cleanup.isAvailable
-                            ? "Fix punctuation, format lists, and apply spoken corrections with Apple Intelligence, on-device."
-                            : "Requires Apple Intelligence, enabled in System Settings.",
-                        isOn: $app.cleanupEnabled
-                    )
-                    .disabled(!app.cleanup.isAvailable)
                 }
             }
         }
@@ -351,49 +320,6 @@ struct SettingsView: View {
             Text("MIT licensed")
                 .font(.system(size: 11)).foregroundStyle(.tertiary)
         }
-    }
-}
-
-/// Paste-and-save for the Gemini API key. The key goes straight to the keychain
-/// and is never shown again, only whether one is saved.
-private struct GeminiKeyRow: View {
-    let gemini: GeminiTranscriber
-    @State private var draft = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s2) {
-            HStack(spacing: Theme.s3) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Gemini API key").font(.system(size: 13, weight: .medium))
-                    Text(gemini.hasKey ? "Saved in your keychain." : "From aistudio.google.com/apikey.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: Theme.s3)
-                if gemini.hasKey {
-                    Button("Remove") { gemini.removeKey() }
-                } else {
-                    SecureField("Paste key", text: $draft)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
-                        .onSubmit(save)
-                    Button("Save", action: save)
-                        .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            if let error = gemini.lastError {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.recording)
-                    .lineLimit(3)
-            }
-        }
-        .padding(.horizontal, Theme.s3)
-        .padding(.vertical, Theme.s2 + 2)
-    }
-
-    private func save() {
-        gemini.saveKey(draft)
-        draft = ""
     }
 }
 

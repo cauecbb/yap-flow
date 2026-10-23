@@ -12,22 +12,32 @@ final class AppState {
     let permissions = PermissionsManager()
     let launchAtLogin = LaunchAtLoginService()
     let vocabulary = VocabularyStore()
-    let gemini = GeminiTranscriber()
+    let keys = APIKeyStore()
+    let appleCleanup = TranscriptCleanupService()
+    private(set) var cloud: CloudTranscriptionRouter!
+    private(set) var cleanup: CleanupRouter!
 
     var currentInputName: String?
     var soundsEnabled: Bool {
         didSet { UserDefaults.standard.set(soundsEnabled, forKey: "soundsEnabled") }
     }
 
-    /// Send the take to Gemini for Wispr-style transcription when a key is saved.
-    var geminiEnabled: Bool {
-        didSet { UserDefaults.standard.set(geminiEnabled, forKey: "geminiEnabled") }
+    /// Who transcribes. Anything but on-device sends the audio to that provider.
+    var transcriptionProvider: TranscriptionProvider {
+        didSet {
+            UserDefaults.standard.set(transcriptionProvider.rawValue, forKey: "transcriptionProvider")
+            // A transcript as heard wants cleaning; start with the same provider.
+            if cleanupProvider == .off, let same = CleanupProvider(rawValue: transcriptionProvider.rawValue) {
+                cleanupProvider = same
+            }
+        }
     }
 
-    var cleanupEnabled: Bool {
+    /// Who tidies the transcript when the transcription provider doesn't.
+    var cleanupProvider: CleanupProvider {
         didSet {
-            UserDefaults.standard.set(cleanupEnabled, forKey: "cleanupEnabled")
-            if cleanupEnabled { cleanup.prewarm() }
+            UserDefaults.standard.set(cleanupProvider.rawValue, forKey: "cleanupProvider")
+            if cleanupProvider == .apple { appleCleanup.prewarm() }
         }
     }
 
@@ -97,7 +107,6 @@ final class AppState {
     private let injector = TextInjector()
     private let hud = HUDController()
     private let sounds = SystemSoundPlayer()
-    let cleanup = TranscriptCleanupService()
     private let deviceObserver = DefaultInputObserver()
     private var history: HistoryStore!
     private var windowCloseObserver: NSObjectProtocol?
@@ -113,8 +122,13 @@ final class AppState {
         soundsEnabled = (UserDefaults.standard.object(forKey: "soundsEnabled") as? Bool) ?? true
         showInDock = (UserDefaults.standard.object(forKey: "showInDock") as? Bool) ?? true
         showInMenuBar = (UserDefaults.standard.object(forKey: "showInMenuBar") as? Bool) ?? true
-        cleanupEnabled = (UserDefaults.standard.object(forKey: "cleanupEnabled") as? Bool) ?? false
-        geminiEnabled = (UserDefaults.standard.object(forKey: "geminiEnabled") as? Bool) ?? true
+        // Settings from before there were providers: a Gemini on/off switch and
+        // an Apple Intelligence cleanup switch.
+        let defaults = UserDefaults.standard
+        transcriptionProvider = TranscriptionProvider(rawValue: defaults.string(forKey: "transcriptionProvider") ?? "")
+            ?? ((defaults.object(forKey: "geminiEnabled") as? Bool) == false ? .onDevice : .gemini)
+        cleanupProvider = CleanupProvider(rawValue: defaults.string(forKey: "cleanupProvider") ?? "")
+            ?? (((defaults.object(forKey: "cleanupEnabled") as? Bool) ?? false) ? .apple : .off)
         modifierTrigger = ModifierTrigger(
             rawValue: UserDefaults.standard.string(forKey: "modifierTrigger") ?? ""
         ) ?? .none
@@ -136,6 +150,9 @@ final class AppState {
 
         sounds.enabled = { [weak self] in self?.soundsEnabled ?? true }
 
+        cloud = CloudTranscriptionRouter(keys: keys) { [weak self] in self?.transcriptionProvider ?? .onDevice }
+        cleanup = CleanupRouter(apple: appleCleanup, keys: keys) { [weak self] in self?.cleanupProvider ?? .off }
+
         coordinator = RecordingCoordinator(
             session: dictation,
             injector: injector,
@@ -143,11 +160,11 @@ final class AppState {
             hud: hud,
             sounds: sounds,
             cleaner: cleanup,
-            cleanupEnabled: { [weak self] in self?.cleanupEnabled ?? false },
+            cleanupEnabled: { [weak self] in self?.cleanupProvider != .off },
             vocabulary: { [weak self] in self?.vocabulary.terms ?? [] },
             deviceName: { [weak self] in self?.currentInputName },
-            cloud: gemini,
-            cloudEnabled: { [weak self] in self?.geminiEnabled ?? false }
+            cloud: cloud,
+            cloudEnabled: { [weak self] in self?.transcriptionProvider != .onDevice }
         )
 
         dictation.contextualStrings = { [weak self] in self?.vocabulary.terms ?? [] }
@@ -158,7 +175,7 @@ final class AppState {
         observeWindowClosesForDockVisibility()
         permissions.refresh()
         launchAtLogin.refresh()
-        gemini.loadKey()
+        keys.load()
 
         // Accessibility takes effect live — no restart needed. Observing simply
         // keeps the UI honest the moment the user grants it.
@@ -208,7 +225,7 @@ final class AppState {
                 Self.languageName(for: $0).localizedCaseInsensitiveCompare(Self.languageName(for: $1)) == .orderedAscending
             }
         }
-        if cleanupEnabled { cleanup.prewarm() }
+        if cleanupProvider == .apple { appleCleanup.prewarm() }
 
         // Delivered on the main queue by the observer, so assign directly.
         deviceObserver.start { [weak self] name in

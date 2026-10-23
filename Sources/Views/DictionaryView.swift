@@ -16,7 +16,7 @@ struct DictionaryView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.s4) {
-                    Text("Teach Yap names and words it often gets wrong. It leans toward these when it hears them, and fixes first-letter slips like \u{201C}brigade\u{201D} to \u{201C}Frigade\u{201D} on device. With Clean up transcripts on, it also fixes messier mishearings.")
+                    Text("Teach Yap names and words it often gets wrong. It leans toward these when it hears them, and fixes first-letter slips like \u{201C}brigade\u{201D} to \u{201C}Frigade\u{201D} on device. With a cleanup provider picked under AI, it also fixes messier mishearings.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
