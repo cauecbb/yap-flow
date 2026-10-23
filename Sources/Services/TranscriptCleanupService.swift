@@ -47,10 +47,12 @@ final class TranscriptCleanupService: TranscriptCleaning {
     private static let cleanupRules = """
         Edit the transcript as follows:
         - Remove filler words (um, uh, er, and like/you know/I mean when used as \
+        filler; in Portuguese: é, hã, ahn, and tipo/né/sabe/então when used as \
         filler) along with false starts and stammered repetitions.
         - Fix punctuation, capitalization, and sentence breaks.
-        - Apply spoken self-corrections: for "scratch that" or "no wait", keep \
-        only what the speaker settled on.
+        - Apply spoken self-corrections: for "scratch that" or "no wait" (in \
+        Portuguese: "não, espera", "quer dizer", "na verdade"), keep only what \
+        the speaker settled on.
         - When the speaker enumerates three or more items, break them out as a \
         list: an introductory line ending in a colon, then every item on its own \
         separate line, numbered if the speaker numbered them ("first", "second"), \
@@ -66,7 +68,7 @@ final class TranscriptCleanupService: TranscriptCleaning {
         """
 
     private static let closing =
-        "Preserve the speaker's wording and meaning everywhere else. Do not summarize and do not add content."
+        "Preserve the speaker's wording and meaning everywhere else. Keep the transcript in the language it was spoken in; never translate it. Do not summarize and do not add content."
 
     private static func dictionaryRule(_ vocabulary: [String]) -> String {
         """

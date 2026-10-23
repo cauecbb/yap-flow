@@ -10,7 +10,7 @@ struct OnboardingView: View {
                     .font(.system(size: 40))
                 Text("Welcome to Yap")
                     .font(.system(size: 22, weight: .bold))
-                Text("On-device voice dictation. Press a key, speak, and your words land wherever you're typing. Nothing leaves your Mac.")
+                Text("Hold fn, speak, and your words land wherever you're typing. Transcribed on your Mac, or by Gemini once you add an API key in Settings.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

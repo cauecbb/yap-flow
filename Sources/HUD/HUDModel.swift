@@ -1,5 +1,7 @@
 import Observation
 
+enum HUDDragPhase { case changed, ended }
+
 @MainActor
 @Observable
 final class HUDModel {
@@ -11,6 +13,12 @@ final class HUDModel {
     var levels: [Float] = Array(repeating: 0, count: HUDModel.waveformSampleCount)
     var partial: String = ""
     var device: String?
+    // Cancel/finish buttons. Hidden while fn is held (releasing it is the finish),
+    // shown in hands-free and for every other trigger.
+    var controlsVisible = true
+    // Docked to a side of the screen: the pill stands up.
+    var vertical = false
+    var onDrag: ((HUDDragPhase) -> Void)?
 
     var onConfirm: (() -> Void)?
     var onCancel: (() -> Void)?

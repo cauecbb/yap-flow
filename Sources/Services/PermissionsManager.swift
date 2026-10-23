@@ -18,6 +18,9 @@ final class PermissionsManager {
     var automation: Status = .notDetermined
 
     private var pollTimer: Timer?
+    /// Event taps can only be created once Accessibility is on, so the key
+    /// monitors retry from here instead of waiting for a relaunch.
+    var onAccessibilityGranted: (() -> Void)?
 
     var allGranted: Bool {
         microphone == .granted && speech == .granted && accessibility && automation == .granted
@@ -138,6 +141,7 @@ final class PermissionsManager {
         guard wasGranted != accessibility else { return }
         // Back off once granted; poll attentively while we're still waiting.
         setPolling(interval: accessibility ? 5.0 : 1.0)
+        if accessibility { onAccessibilityGranted?() }
     }
 
     /// Ad-hoc signed builds have no stable designated requirement, so every

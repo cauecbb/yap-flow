@@ -12,10 +12,16 @@ final class AppState {
     let permissions = PermissionsManager()
     let launchAtLogin = LaunchAtLoginService()
     let vocabulary = VocabularyStore()
+    let gemini = GeminiTranscriber()
 
     var currentInputName: String?
     var soundsEnabled: Bool {
         didSet { UserDefaults.standard.set(soundsEnabled, forKey: "soundsEnabled") }
+    }
+
+    /// Send the take to Gemini for Wispr-style transcription when a key is saved.
+    var geminiEnabled: Bool {
+        didSet { UserDefaults.standard.set(geminiEnabled, forKey: "geminiEnabled") }
     }
 
     var cleanupEnabled: Bool {
@@ -31,6 +37,16 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(modifierTrigger.rawValue, forKey: "modifierTrigger")
             modifierHotkeys.trigger = modifierTrigger
+        }
+    }
+
+    /// Wispr Flow-style: hold fn to talk, fn+space for hands-free.
+    var pushToTalkFn: Bool {
+        didSet {
+            UserDefaults.standard.set(pushToTalkFn, forKey: "pushToTalkFn")
+            pushToTalk.enabled = pushToTalkFn
+            // A tap-to-toggle on fn would fight the hold.
+            if pushToTalkFn, modifierTrigger == .function { modifierTrigger = .none }
         }
     }
 
@@ -76,6 +92,7 @@ final class AppState {
     private let hotkeys = HotkeyManager()
     private let modifierHotkeys = ModifierHotkeyMonitor()
     private let functionKeys = FunctionKeyMonitor()
+    private let pushToTalk = PushToTalkMonitor()
     private let escapeMonitor = EscapeMonitor()
     private let injector = TextInjector()
     private let hud = HUDController()
@@ -97,9 +114,11 @@ final class AppState {
         showInDock = (UserDefaults.standard.object(forKey: "showInDock") as? Bool) ?? true
         showInMenuBar = (UserDefaults.standard.object(forKey: "showInMenuBar") as? Bool) ?? true
         cleanupEnabled = (UserDefaults.standard.object(forKey: "cleanupEnabled") as? Bool) ?? false
+        geminiEnabled = (UserDefaults.standard.object(forKey: "geminiEnabled") as? Bool) ?? true
         modifierTrigger = ModifierTrigger(
             rawValue: UserDefaults.standard.string(forKey: "modifierTrigger") ?? ""
         ) ?? .none
+        pushToTalkFn = (UserDefaults.standard.object(forKey: "pushToTalkFn") as? Bool) ?? true
         functionKeyTrigger = FunctionKeyTrigger(
             rawValue: UserDefaults.standard.string(forKey: "functionKeyTrigger") ?? ""
         ) ?? .none
@@ -126,7 +145,9 @@ final class AppState {
             cleaner: cleanup,
             cleanupEnabled: { [weak self] in self?.cleanupEnabled ?? false },
             vocabulary: { [weak self] in self?.vocabulary.terms ?? [] },
-            deviceName: { [weak self] in self?.currentInputName }
+            deviceName: { [weak self] in self?.currentInputName },
+            cloud: gemini,
+            cloudEnabled: { [weak self] in self?.geminiEnabled ?? false }
         )
 
         dictation.contextualStrings = { [weak self] in self?.vocabulary.terms ?? [] }
@@ -137,9 +158,14 @@ final class AppState {
         observeWindowClosesForDockVisibility()
         permissions.refresh()
         launchAtLogin.refresh()
+        gemini.loadKey()
 
         // Accessibility takes effect live — no restart needed. Observing simply
         // keeps the UI honest the moment the user grants it.
+        permissions.onAccessibilityGranted = { [weak self] in
+            self?.pushToTalk.start()
+            self?.functionKeys.start()
+        }
         permissions.startObserving()
 
         hotkeys.onToggle { [weak self] in
@@ -160,6 +186,8 @@ final class AppState {
         }
         functionKeys.trigger = functionKeyTrigger
         functionKeys.start()
+
+        bindPushToTalk()
 
         escapeMonitor.onEscape = { [weak self] in
             self?.coordinator.handleEscape()
@@ -185,6 +213,48 @@ final class AppState {
         // Delivered on the main queue by the observer, so assign directly.
         deviceObserver.start { [weak self] name in
             self?.currentInputName = name
+        }
+    }
+
+    private func bindPushToTalk() {
+        pushToTalk.isDictating = { [weak self] in self?.coordinator.state == .recording }
+        pushToTalk.onPress = { [weak self] in
+            guard let self, self.coordinator.state == .idle else { return }
+            self.hud.setControlsVisible(false)
+            Task { await self.coordinator.toggle() }
+        }
+        pushToTalk.onRelease = { [weak self] in
+            guard let self, self.coordinator.state == .recording else { return }
+            Task { await self.coordinator.toggle() }
+        }
+        // A tap or fn+space. In a Task so it queues behind the press's start.
+        pushToTalk.onLock = { [weak self] in
+            Task { @MainActor in
+                guard let self, self.coordinator.state == .recording else { return }
+                self.sounds.playLock()
+                self.hud.setControlsVisible(true)
+            }
+        }
+        pushToTalk.onStopHandsFree = { [weak self] in
+            guard let self, self.coordinator.state == .recording else { return }
+            Task { await self.coordinator.toggle() }
+        }
+        pushToTalk.onCombo = { [weak self] in
+            guard let self else { return }
+            Task { await self.coordinator.cancel(silently: true) }
+        }
+        // Wispr cancels on the first escape, not the second.
+        pushToTalk.onEscape = { [weak self] in
+            guard let self else { return }
+            Task { await self.coordinator.cancel() }
+        }
+        pushToTalk.enabled = pushToTalkFn
+        if pushToTalkFn, modifierTrigger == .function { modifierTrigger = .none }
+
+        // First launch of this build: start at login, like Wispr does.
+        if UserDefaults.standard.object(forKey: "wisprSetupApplied") == nil {
+            UserDefaults.standard.set(true, forKey: "wisprSetupApplied")
+            launchAtLogin.set(true)
         }
     }
 
@@ -251,7 +321,7 @@ final class AppState {
     func openMain(page: MainPage = .settings) {
         mainPage = page
         WindowManager.shared.show(
-            id: "main", title: "Yap · On-device dictation",
+            id: "main", title: "Yap",
             size: NSSize(width: 460, height: 740)
         ) {
             MainWindowView()

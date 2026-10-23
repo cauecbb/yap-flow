@@ -7,7 +7,11 @@ import Foundation
 enum FillerRemoval {
     /// The default filler set. Whole-word and case-insensitive, so real words
     /// that merely contain these letters ("human", "summary") are left alone.
-    static let words = ["uhhh", "uhh", "uhm", "umm", "mmm", "hmm", "ehh", "uh", "um", "hm", "mm", "mh"]
+    static let words = [
+        "uhhh", "uhh", "uhm", "umm", "mmm", "hmm", "ehh", "uh", "um", "hm", "mm", "mh",
+        // Portuguese hesitations. Not "é" or "né": those are real words too.
+        "humm", "ahn", "hã", "ãh",
+    ]
 
     static func strip(_ text: String) -> String {
         let alternation = words

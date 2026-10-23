@@ -17,7 +17,7 @@ struct AboutView: View {
             VStack(spacing: Theme.s1) {
                 Text("Yap")
                     .font(.system(size: 20, weight: .bold))
-                Text("On-device dictation for macOS")
+                Text("Wispr Flow-style dictation for macOS")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                 Text("Version \(version)")
@@ -25,7 +25,7 @@ struct AboutView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            Text("Yap transcribes your speech entirely on your Mac using Apple's Speech framework. No audio ever leaves your machine, and there is no account, API key, or subscription.")
+            Text("Hold fn and talk. With a Gemini API key, your audio is transcribed and cleaned up by Google. Without one, Yap transcribes entirely on your Mac with Apple's Speech framework and nothing leaves your machine.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -35,7 +35,7 @@ struct AboutView: View {
             Divider().overlay(Theme.hairline)
 
             VStack(spacing: Theme.s2) {
-                Link("View source on GitHub", destination: URL(string: "https://github.com/FrigadeHQ/yap")!)
+                Link("View source on GitHub", destination: URL(string: "https://github.com/cauecbb/yap-flow")!)
                     .font(.system(size: 12, weight: .medium))
                 Text("Released under the MIT License.")
                     .font(.system(size: 11))
@@ -46,13 +46,13 @@ struct AboutView: View {
 
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
-                    Text("Built by")
+                    Text("Based on")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
-                    Link("Frigade", destination: URL(string: "https://frigade.com")!)
+                    Link("Yap by Frigade", destination: URL(string: "https://github.com/FrigadeHQ/yap")!)
                         .font(.system(size: 11, weight: .medium))
                 }
-                Text("© 2026 Frigade, Inc.")
+                Text("© 2026 Frigade, Inc. and contributors")
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
             }

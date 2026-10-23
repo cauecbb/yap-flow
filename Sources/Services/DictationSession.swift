@@ -6,6 +6,14 @@ protocol DictationSessioning: AnyObject {
     var onPartial: ((String) -> Void)? { get set }
     func start() async throws
     func stop() async throws -> String
+    /// The last take as WAV, for cloud transcription. Set by `stop()`.
+    var lastRecording: Data? { get }
+    /// 16 kHz mono PCM as it is captured, for streaming. Audio thread.
+    var onAudio: ((Data) -> Void)? { get set }
+}
+
+extension DictationSessioning {
+    var lastRecording: Data? { nil }
 }
 
 @MainActor
@@ -15,7 +23,14 @@ final class DictationSession: DictationSessioning {
 
     private let capture = AudioCaptureService()
     private let relay = AudioBufferRelay()
+    private let recorder = AudioRecorder()
     private var transcriber: StreamingTranscriber?
+    private(set) var lastRecording: Data?
+
+    var onAudio: ((Data) -> Void)? {
+        get { recorder.onPCM }
+        set { recorder.onPCM = newValue }
+    }
     private var locale: Locale
 
     /// The user's dictionary, read fresh at the start of each dictation so edits
@@ -65,11 +80,14 @@ final class DictationSession: DictationSessioning {
         // and anything said during it would otherwise be lost — which is what
         // made the first press feel laggy.
         relay.reset()
+        recorder.reset()
+        lastRecording = nil
         capture.onLevel = { [weak self] level in
             Task { @MainActor in self?.onLevel?(level) }
         }
         capture.onBuffer = { [weak self] buffer in
             self?.relay.receive(buffer)
+            self?.recorder.append(buffer)
         }
         try capture.start()
 
@@ -110,6 +128,8 @@ final class DictationSession: DictationSessioning {
     func stop() async throws -> String {
         capture.stop()
         relay.reset()
+        lastRecording = recorder.wav()
+        recorder.reset()
         let text = try await transcriber?.finish() ?? ""
         transcriber = nil
         return text

@@ -16,7 +16,8 @@ final class BufferConverter {
         let inputFormat = buffer.format
         guard inputFormat != format else { return buffer }
 
-        if converter == nil || converter?.outputFormat != format {
+        // The input side changes too when the default mic switches mid-take.
+        if converter == nil || converter?.outputFormat != format || converter?.inputFormat != inputFormat {
             converter = AVAudioConverter(from: inputFormat, to: format)
             converter?.primeMethod = .none
         }

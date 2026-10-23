@@ -5,6 +5,7 @@ import Testing
 final class FakeSession: DictationSessioning {
     var onLevel: ((Float) -> Void)?
     var onPartial: ((String) -> Void)?
+    var onAudio: ((Data) -> Void)?
     var textToReturn = "hello world"
     var startCalled = 0
     var stopCalled = 0

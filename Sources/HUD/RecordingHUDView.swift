@@ -1,101 +1,104 @@
 import SwiftUI
 
+/// A Wispr Flow-style bar: a small dark pill at the bottom of the screen with a
+/// white waveform. No live transcript. Cancel and finish buttons appear only
+/// when there is no held key to release (hands-free and the other triggers).
 struct RecordingHUDView: View {
     @Bindable var model: HUDModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.s3) {
-            HStack(spacing: Theme.s3) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(model.phase == .confirmCancel ? Theme.recording : .primary)
-                    .fixedSize(horizontal: true, vertical: false)
+        let vertical = model.vertical
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
 
-                if isRecordingPhase {
-                    Waveform(levels: model.levels)
-                }
-
-                if isProcessingPhase {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
-                }
-
-                Spacer(minLength: Theme.s2)
-
-                if isRecordingPhase {
-                    HUDButton(systemName: "xmark", tint: .secondary) {
-                        model.onCancel?()
-                    }
+        layout {
+            if showsButtons {
+                PillButton(systemName: "xmark", prominent: false) { model.onCancel?() }
                     .help("Discard")
+            }
 
-                    HUDButton(systemName: "checkmark", tint: Theme.success, prominent: true) {
-                        model.onConfirm?()
-                    }
+            content
+                .frame(minWidth: vertical ? nil : 44, minHeight: vertical ? 44 : nil)
+
+            if showsButtons {
+                PillButton(systemName: "stop.fill", prominent: true) { model.onConfirm?() }
                     .help("Finish and insert")
-                }
-            }
-
-            if !model.partial.isEmpty, model.phase != .restarting {
-                Text(model.partial)
-                    .font(.system(size: 12.5))
-                    // Full-strength primary: .secondary is invisible over a light backdrop on translucent material.
-                    .foregroundStyle(.primary.opacity(0.85))
-                    .lineLimit(2)
-                    .truncationMode(.head)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.horizontal, Theme.s4)
-        .padding(.vertical, Theme.s3)
-        .frame(width: 348, alignment: .leading)
-        .background {
-            // Regular (not ultraThin) material plus a tint, so text stays legible over light and dark backdrops.
-            ZStack {
-                RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous)
-                    .fill(.regularMaterial)
-                RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous)
-                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous)
-                .strokeBorder(Theme.hairlineStrong, lineWidth: 1)
+        .padding(vertical ? Edge.Set.vertical : .horizontal, showsButtons ? 4 : 10)
+        .frame(width: vertical ? 28 : nil, height: vertical ? nil : 28)
+        .background(Capsule(style: .continuous).fill(Color.black.opacity(0.9)))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+        .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+        .contentShape(Capsule(style: .continuous))
+        // Drag the bar anywhere; dropped near a side it docks there standing up.
+        .gesture(
+            DragGesture(minimumDistance: 3)
+                .onChanged { _ in model.onDrag?(.changed) }
+                .onEnded { _ in model.onDrag?(.ended) }
         )
-        .shadow(color: .black.opacity(0.22), radius: 22, y: 8)
-        // Transparent margin so the shadow can fall off inside the window instead
-        // of being clipped square. The bottom needs more room than the top because
-        // the shadow is offset downward and the blur tails past its nominal radius.
+        // A fixed canvas: the panel is sized once on show, and the pill grows
+        // inside it when hands-free adds the buttons instead of being clipped.
+        .frame(width: canvas.width, height: canvas.height)
         .padding(Self.shadowInsets)
+        .environment(\.colorScheme, .dark)
+        .animation(.spring(duration: 0.22), value: showsButtons)
         .animation(.easeInOut(duration: 0.18), value: model.phase)
     }
 
-    static let shadowInsets = EdgeInsets(top: 28, leading: 34, bottom: 54, trailing: 34)
+    static let shadowInsets = EdgeInsets(top: 8, leading: 8, bottom: 16, trailing: 8)
 
-    private var isRecordingPhase: Bool {
-        model.phase == .listening || model.phase == .confirmCancel
-    }
+    private var canvas: CGSize { HUDPlacement.canvas(vertical: model.vertical) }
 
-    // Working states with no waveform, so a spinner shows they're still running.
-    private var isProcessingPhase: Bool {
-        model.phase == .transcribing || model.phase == .cleaning
-    }
-
-    private var title: String {
+    @ViewBuilder
+    private var content: some View {
         switch model.phase {
-        case .listening: return "Listening"
-        case .confirmCancel: return "Press esc again to cancel"
-        case .transcribing: return "Transcribing…"
-        case .cleaning: return "Cleaning up…"
-        case .restarting: return "Restarting Yap"
+        case .listening:
+            Waveform(levels: model.levels, vertical: model.vertical)
+        case .transcribing, .cleaning:
+            ProcessingDots(vertical: model.vertical)
+        case .confirmCancel:
+            PillLabel("Press esc again to cancel", systemName: "escape", compact: model.vertical)
+        case .restarting:
+            PillLabel("Restarting Yap", systemName: "arrow.clockwise", compact: model.vertical)
         }
+    }
+
+    private var showsButtons: Bool {
+        model.controlsVisible && (model.phase == .listening || model.phase == .confirmCancel)
     }
 }
 
-private struct HUDButton: View {
+/// Text on a horizontal bar; just the symbol when it stands up and there's no room.
+private struct PillLabel: View {
+    let text: String
     let systemName: String
-    var tint: Color = .secondary
-    var prominent: Bool = false
+    let compact: Bool
+
+    init(_ text: String, systemName: String, compact: Bool) {
+        self.text = text
+        self.systemName = systemName
+        self.compact = compact
+    }
+
+    var body: some View {
+        Group {
+            if compact {
+                Image(systemName: systemName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .help(text)
+            } else {
+                Text(text)
+                    .font(.system(size: 12, weight: .medium))
+                    .fixedSize()
+            }
+        }
+        .foregroundStyle(.white.opacity(0.9))
+    }
+}
+
+private struct PillButton: View {
+    let systemName: String
+    let prominent: Bool
     let action: () -> Void
 
     @State private var hovering = false
@@ -103,14 +106,14 @@ private struct HUDButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(prominent ? Color.white : tint)
-                .frame(width: 24, height: 24)
+                .font(.system(size: prominent ? 8 : 9, weight: .bold))
+                .foregroundStyle(prominent ? Color.white : Color.white.opacity(0.8))
+                .frame(width: 20, height: 20)
                 .background {
                     Circle().fill(
                         prominent
-                            ? Theme.success.opacity(hovering ? 1.0 : 0.9)
-                            : Color.primary.opacity(hovering ? 0.14 : 0.08)
+                            ? Theme.recording.opacity(hovering ? 1.0 : 0.88)
+                            : Color.white.opacity(hovering ? 0.22 : 0.12)
                     )
                 }
         }
@@ -120,38 +123,62 @@ private struct HUDButton: View {
     }
 }
 
-/// A scrolling waveform. Each bar is one moment in time — newest on the right,
-/// older samples drifting left — so speech leaves a visible trace instead of the
-/// whole meter rising and falling as one.
+/// The newest samples, drawn as white bars that swell toward the middle, so the
+/// pill pulses with your voice and rests as a row of dots in silence.
 private struct Waveform: View {
     let levels: [Float]
+    var vertical = false
 
+    private static let barCount = 12
     private let barWidth: CGFloat = 2.5
     private let spacing: CGFloat = 2
     private let minHeight: CGFloat = 2.5
-    private let maxHeight: CGFloat = 22
+    private let maxHeight: CGFloat = 14
 
     var body: some View {
-        HStack(alignment: .center, spacing: spacing) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { index, level in
+        let recent = Array(levels.suffix(Self.barCount))
+        // Standing up, the bars lie down and stack: the same meter turned 90°.
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: spacing)) : AnyLayout(HStackLayout(spacing: spacing))
+        layout {
+            ForEach(recent.indices, id: \.self) { index in
+                let length = height(for: recent[index], at: index, of: recent.count)
                 Capsule()
-                    .fill(Color.primary.opacity(opacity(for: index)))
-                    .frame(width: barWidth, height: height(for: level))
+                    .fill(Color.white.opacity(0.95))
+                    .frame(width: vertical ? length : barWidth, height: vertical ? barWidth : length)
             }
         }
-        .frame(height: maxHeight)
-        // Just enough to smooth the step between samples without adding lag.
-        .animation(.easeOut(duration: 0.06), value: levels)
+        .frame(width: vertical ? maxHeight : nil, height: vertical ? nil : maxHeight)
+        .animation(.easeOut(duration: 0.08), value: levels)
     }
 
-    private func height(for level: Float) -> CGFloat {
-        minHeight + (maxHeight - minHeight) * CGFloat(max(0, min(1, level)))
+    private func height(for level: Float, at index: Int, of count: Int) -> CGFloat {
+        // Center bars reach full height, the edges about half.
+        let position = count > 1 ? Double(index) / Double(count - 1) : 0.5
+        let envelope = 0.5 + 0.5 * sin(.pi * position)
+        let boosted = min(1, Double(max(0, level)) * 1.4)
+        return minHeight + (maxHeight - minHeight) * CGFloat(boosted * envelope)
     }
+}
 
-    /// Older samples fade out, which gives the trace a sense of direction.
-    private func opacity(for index: Int) -> Double {
-        guard levels.count > 1 else { return 0.85 }
-        let age = Double(index) / Double(levels.count - 1)
-        return 0.28 + 0.57 * age
+/// Three dots breathing in turn while the transcript is finished and cleaned up.
+private struct ProcessingDots: View {
+    var vertical = false
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let layout = vertical ? AnyLayout(VStackLayout(spacing: 5)) : AnyLayout(HStackLayout(spacing: 5))
+            layout {
+                ForEach(0..<3, id: \.self) { index in
+                    let phase = (t * 2.4 - Double(index) * 0.45).truncatingRemainder(dividingBy: 2 * .pi)
+                    let pulse = 0.5 + 0.5 * sin(phase)
+                    Circle()
+                        .fill(Color.white.opacity(0.35 + 0.6 * pulse))
+                        .frame(width: 5, height: 5)
+                        .scaleEffect(0.8 + 0.3 * pulse)
+                }
+            }
+        }
+        .frame(width: vertical ? 14 : nil, height: vertical ? nil : 14)
     }
 }

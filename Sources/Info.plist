@@ -33,8 +33,8 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Yap uses System Events to paste transcribed text when the AppleScript paste method is selected.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Yap uses your microphone to transcribe your speech on-device.</string>
+	<string>Yap uses your microphone to transcribe your speech.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Yap transcribes your speech to text entirely on-device. Nothing is sent to any server.</string>
+	<string>Yap transcribes your speech on-device. Audio goes to Google only if you add a Gemini API key.</string>
 </dict>
 </plist>

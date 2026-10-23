@@ -22,3 +22,6 @@ Yap.xcodeproj/
 
 # Release artifacts
 dist/
+
+# Custom sound cues (bring your own: dictation-start, dictation-stop, dictation-lock .wav)
+Sources/Resources/Sounds/

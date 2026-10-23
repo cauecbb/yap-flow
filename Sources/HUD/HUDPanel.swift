@@ -13,7 +13,8 @@ final class HUDPanel: NSPanel {
         isFloatingPanel = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        isMovableByWindowBackground = true
+        // Dragging is handled by the view, so the drop can snap to an edge.
+        isMovableByWindowBackground = false
         hidesOnDeactivate = false
         isOpaque = false
         backgroundColor = .clear
@@ -27,25 +28,27 @@ final class HUDPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    // Layout is forced before measuring: reading `fittingSize` while SwiftUI still has a stale layout returns the wrong size, so the panel would appear at one size and visibly snap to another.
-    func reposition() {
+    /// Places the bar on its saved spot. `screen` is the one it was just dropped
+    /// on; otherwise it follows the app being dictated into. `animated` glides it
+    /// there, for the snap after a drag.
+    func reposition(on screen: NSScreen? = nil, animated: Bool = false) {
         // Anchor to the screen holding the app being dictated into. Fall back to
         // the mouse's screen, then the main one, so the widget still lands
         // somewhere sensible when no focused window can be resolved.
-        guard let screen = FocusedWindow.screen()
+        guard let screen = screen
+            ?? FocusedWindow.screen()
             ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
             ?? NSScreen.main else { return }
-        let visible = screen.visibleFrame
 
-        contentView?.layoutSubtreeIfNeeded()
-        let size = contentView?.fittingSize ?? NSSize(width: 386, height: 76)
-        guard size.width > 0, size.height > 0 else { return }
-        setContentSize(size)
-
-        // The window includes a transparent shadow margin, so offset by it to
-        // keep the visible card where it looks right.
-        let x = visible.midX - size.width / 2
-        let y = visible.minY + 96 - RecordingHUDView.shadowInsets.bottom
-        setFrameOrigin(NSPoint(x: x, y: y))
+        let target = HUDPlacement.frame(for: HUDPlacement.edge, in: screen.visibleFrame)
+        guard animated else {
+            setFrame(target, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().setFrame(target, display: true)
+        }
     }
 }
