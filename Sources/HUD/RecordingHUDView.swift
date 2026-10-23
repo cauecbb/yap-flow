@@ -3,14 +3,40 @@ import SwiftUI
 /// A Wispr Flow-style bar: a small dark pill at the bottom of the screen with a
 /// white waveform. No live transcript. Cancel and finish buttons appear only
 /// when there is no held key to release (hands-free and the other triggers).
+/// Between dictations, with "Always show the bar" on, it rests as a thin pill
+/// that starts a dictation when clicked.
 struct RecordingHUDView: View {
     @Bindable var model: HUDModel
 
     var body: some View {
+        Group {
+            if model.phase == .idle {
+                RestingPill(vertical: model.vertical)
+                    .onTapGesture { model.onStart?() }
+            } else {
+                activePill
+            }
+        }
+        // Drag the bar anywhere; dropped near a side it docks there standing up.
+        .gesture(
+            DragGesture(minimumDistance: 3)
+                .onChanged { _ in model.onDrag?(.changed) }
+                .onEnded { _ in model.onDrag?(.ended) }
+        )
+        // A fixed canvas: the panel is sized once on show, and the pill grows
+        // inside it when hands-free adds the buttons instead of being clipped.
+        .frame(width: canvas.width, height: canvas.height)
+        .padding(Self.shadowInsets)
+        .environment(\.colorScheme, .dark)
+        .animation(.spring(duration: 0.22), value: showsButtons)
+        .animation(.easeInOut(duration: 0.18), value: model.phase)
+    }
+
+    private var activePill: some View {
         let vertical = model.vertical
         let layout = vertical ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
 
-        layout {
+        return layout {
             if showsButtons {
                 PillButton(systemName: "xmark", prominent: false) { model.onCancel?() }
                     .help("Discard")
@@ -30,29 +56,18 @@ struct RecordingHUDView: View {
         .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
         .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
         .contentShape(Capsule(style: .continuous))
-        // Drag the bar anywhere; dropped near a side it docks there standing up.
-        .gesture(
-            DragGesture(minimumDistance: 3)
-                .onChanged { _ in model.onDrag?(.changed) }
-                .onEnded { _ in model.onDrag?(.ended) }
-        )
-        // A fixed canvas: the panel is sized once on show, and the pill grows
-        // inside it when hands-free adds the buttons instead of being clipped.
-        .frame(width: canvas.width, height: canvas.height)
-        .padding(Self.shadowInsets)
-        .environment(\.colorScheme, .dark)
-        .animation(.spring(duration: 0.22), value: showsButtons)
-        .animation(.easeInOut(duration: 0.18), value: model.phase)
     }
 
     static let shadowInsets = EdgeInsets(top: 8, leading: 8, bottom: 16, trailing: 8)
 
-    private var canvas: CGSize { HUDPlacement.canvas(vertical: model.vertical) }
+    private var canvas: CGSize {
+        HUDPlacement.canvas(vertical: model.vertical, idle: model.phase == .idle)
+    }
 
     @ViewBuilder
     private var content: some View {
         switch model.phase {
-        case .listening:
+        case .idle, .listening:
             Waveform(levels: model.levels, vertical: model.vertical)
         case .transcribing, .cleaning:
             ProcessingDots(vertical: model.vertical)
@@ -65,6 +80,34 @@ struct RecordingHUDView: View {
 
     private var showsButtons: Bool {
         model.controlsVisible && (model.phase == .listening || model.phase == .confirmCancel)
+    }
+}
+
+/// The bar between dictations: a thin pill that swells under the pointer.
+private struct RestingPill: View {
+    let vertical: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        let length: CGFloat = hovering ? 46 : 34
+        let thickness: CGFloat = hovering ? 12 : 7
+
+        Capsule(style: .continuous)
+            .fill(Color.black.opacity(hovering ? 0.85 : 0.55))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(hovering ? 0.55 : 0.32), lineWidth: 1)
+            )
+            .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
+            .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
+            // A target bigger than the pill. Not fully clear, or the window
+            // server would let clicks fall through to the app underneath.
+            .frame(width: vertical ? 22 : 54, height: vertical ? 54 : 22)
+            .background(Color.black.opacity(0.01))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.15), value: hovering)
+            .help("Click to dictate, or hold fn")
     }
 }
 

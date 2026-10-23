@@ -154,7 +154,9 @@ final class PushToTalkMonitor {
                 return false
             }
             fnHidden = true
-            if mode == .handsFree, isDictating() {
+            // Ends hands-free, and also a dictation started some other way: a
+            // click on the resting bar, the menu, the keyboard shortcut.
+            if isDictating() {
                 mode = .idle
                 fire(onStopHandsFree)
             } else {

@@ -20,6 +20,7 @@ final class HUDModel {
     var vertical = false
     var onDrag: ((HUDDragPhase) -> Void)?
 
+    var onStart: (() -> Void)?
     var onConfirm: (() -> Void)?
     var onCancel: (() -> Void)?
 }

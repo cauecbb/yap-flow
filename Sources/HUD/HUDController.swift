@@ -13,6 +13,16 @@ final class HUDController: HUDControlling {
     // window, so its own gesture translation can't be trusted mid-drag.
     private var dragStart: (mouse: NSPoint, origin: NSPoint)?
     private let guides = HUDDropGuides()
+    private var screenObserver: NSObjectProtocol?
+
+    /// Whether the bar stays on screen between dictations, as a resting pill.
+    var alwaysVisible: () -> Bool = { false }
+
+    /// A click on the resting pill.
+    var onIdleTap: (() -> Void)? {
+        get { model.onStart }
+        set { model.onStart = newValue }
+    }
 
     func setActions(onConfirm: @escaping () -> Void, onCancel: @escaping () -> Void) {
         model.onConfirm = onConfirm
@@ -28,6 +38,37 @@ final class HUDController: HUDControlling {
         panel.alphaValue = 0
         panel.reposition()
         self.panel = panel
+
+        // A display plugged in or rearranged moves the edges the pill rests on.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.model.phase == .idle else { return }
+                self.rest()
+            }
+        }
+    }
+
+    /// Between dictations: the resting pill on its saved spot, or nothing when
+    /// the bar is set to show only while dictating.
+    func rest() {
+        hideTask?.cancel()
+        guides.hide()
+        dragStart = nil
+        model.controlsVisible = true
+        guard alwaysVisible() else {
+            panel?.orderOut(nil)
+            return
+        }
+
+        prepare()
+        guard let panel else { return }
+        model.phase = .idle
+        model.vertical = HUDPlacement.edge.isVertical
+        panel.reposition(idle: true)
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
     }
 
     func show(device: String?) {
@@ -103,7 +144,7 @@ final class HUDController: HUDControlling {
             let edge = HUDPlacement.nearest(to: panel.frame, in: screen.visibleFrame)
             HUDPlacement.save(edge: edge)
             model.vertical = edge.isVertical
-            panel.reposition(on: screen, animated: true)
+            panel.reposition(on: screen, idle: model.phase == .idle, animated: true)
         }
     }
 
@@ -112,19 +153,15 @@ final class HUDController: HUDControlling {
     }
 
     func hide(after seconds: Double) {
-        hideTask?.cancel()
-        guides.hide()
-        dragStart = nil
         guard seconds > 0 else {
-            panel?.orderOut(nil)
-            model.controlsVisible = true
+            rest()
             return
         }
+        hideTask?.cancel()
         hideTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            self?.panel?.orderOut(nil)
-            self?.model.controlsVisible = true
+            self?.rest()
         }
     }
 }

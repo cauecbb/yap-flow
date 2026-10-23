@@ -47,8 +47,8 @@ final class HUDDropGuides {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isOpaque = false

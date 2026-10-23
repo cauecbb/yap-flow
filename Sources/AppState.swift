@@ -74,6 +74,20 @@ final class AppState {
         }
     }
 
+    /// Keeps the bar on screen between dictations as a small pill, like
+    /// Wispr's, over full-screen apps too. macOS only lets an app without a
+    /// Dock icon float there, so this hides the icon.
+    var alwaysShowBar: Bool {
+        didSet {
+            UserDefaults.standard.set(alwaysShowBar, forKey: "alwaysShowBar")
+            applyDockVisibility()
+            if coordinator.state == .idle { hud.rest() }
+        }
+    }
+
+    /// The Dock icon actually shown: never while the bar is always on screen.
+    var dockIconShown: Bool { showInDock && !alwaysShowBar }
+
     /// With this and `showInDock` both off, Yap runs on the shortcut alone and puts
     /// nothing on screen. Opening it again from Spotlight or Finder is the way back:
     /// `applicationShouldHandleReopen` surfaces a window without launching a second copy.
@@ -121,6 +135,7 @@ final class AppState {
 
         soundsEnabled = (UserDefaults.standard.object(forKey: "soundsEnabled") as? Bool) ?? true
         showInDock = (UserDefaults.standard.object(forKey: "showInDock") as? Bool) ?? true
+        alwaysShowBar = (UserDefaults.standard.object(forKey: "alwaysShowBar") as? Bool) ?? true
         showInMenuBar = (UserDefaults.standard.object(forKey: "showInMenuBar") as? Bool) ?? true
         // Settings from before there were providers: a Gemini on/off switch and
         // an Apple Intelligence cleanup switch.
@@ -213,7 +228,15 @@ final class AppState {
 
         // Build the HUD window and resolve the speech model up front, so the
         // first press of the shortcut is immediate rather than paying setup cost.
+        hud.alwaysVisible = { [weak self] in self?.alwaysShowBar ?? false }
+        // A click on the resting bar starts a hands-free dictation.
+        hud.onIdleTap = { [weak self] in
+            guard let self, self.coordinator.state == .idle else { return }
+            self.hud.setControlsVisible(true)
+            Task { await self.coordinator.toggle() }
+        }
         hud.prepare()
+        hud.rest()
         let locale = effectiveDictationLocale
         Task.detached(priority: .utility) {
             await DictationSession.prewarm(locale: locale)
@@ -276,7 +299,7 @@ final class AppState {
     }
 
     private func applyDockVisibility() {
-        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+        NSApp.setActivationPolicy(dockIconShown ? .regular : .accessory)
     }
 
     /// Flipping the policy to `.accessory` does not drop the Dock icon while a
@@ -288,7 +311,7 @@ final class AppState {
             forName: NSWindow.willCloseNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.showInDock else { return }
+                guard let self, !self.dockIconShown else { return }
                 self.applyDockVisibility()
             }
         }
@@ -305,6 +328,11 @@ final class AppState {
     static func languageName(for locale: Locale) -> String {
         Locale.current.localizedString(forIdentifier: locale.identifier(.bcp47))
             ?? locale.identifier(.bcp47)
+    }
+
+    /// The bar's spot changed in Settings: move the resting pill there now.
+    func barPlacementChanged() {
+        if coordinator.state == .idle { hud.rest() }
     }
 
     func toggleRecording() {

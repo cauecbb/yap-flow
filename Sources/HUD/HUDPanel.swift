@@ -11,8 +11,11 @@ final class HUDPanel: NSPanel {
         )
 
         isFloatingPanel = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        // Above other apps' floating windows, and with these behaviors on every
+        // Space, full-screen apps included. macOS only allows the latter for an
+        // app without a Dock icon, which is why "Always show the bar" hides it.
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         // Dragging is handled by the view, so the drop can snap to an edge.
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
@@ -31,7 +34,7 @@ final class HUDPanel: NSPanel {
     /// Places the bar on its saved spot. `screen` is the one it was just dropped
     /// on; otherwise it follows the app being dictated into. `animated` glides it
     /// there, for the snap after a drag.
-    func reposition(on screen: NSScreen? = nil, animated: Bool = false) {
+    func reposition(on screen: NSScreen? = nil, idle: Bool = false, animated: Bool = false) {
         // Anchor to the screen holding the app being dictated into. Fall back to
         // the mouse's screen, then the main one, so the widget still lands
         // somewhere sensible when no focused window can be resolved.
@@ -40,7 +43,7 @@ final class HUDPanel: NSPanel {
             ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
             ?? NSScreen.main else { return }
 
-        let target = HUDPlacement.frame(for: HUDPlacement.edge, in: screen.visibleFrame)
+        let target = HUDPlacement.frame(for: HUDPlacement.edge, in: screen.visibleFrame, idle: idle)
         guard animated else {
             setFrame(target, display: true)
             return

@@ -209,15 +209,18 @@ struct SettingsView: View {
                     Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
                     SettingsToggleRow(
                         title: "Show in Dock",
-                        subtitle: app.showInMenuBar
-                            ? "Turn off to run from the menu bar only."
-                            : "The menu bar icon is off too, so open Yap from Spotlight to get back here.",
-                        isOn: $app.showInDock
+                        subtitle: app.alwaysShowBar
+                            ? "Off while the bar is always shown: macOS only floats it over full-screen apps without a Dock icon."
+                            : app.showInMenuBar
+                                ? "Turn off to run from the menu bar only."
+                                : "The menu bar icon is off too, so open Yap from Spotlight to get back here.",
+                        isOn: Binding(get: { app.dockIconShown }, set: { app.showInDock = $0 })
                     )
+                    .disabled(app.alwaysShowBar)
                     Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
                     SettingsToggleRow(
                         title: "Show in menu bar",
-                        subtitle: app.showInDock
+                        subtitle: app.dockIconShown
                             ? "Turn off to run from the Dock only."
                             : "The Dock icon is off too, so open Yap from Spotlight to get back here.",
                         isOn: $app.showInMenuBar
@@ -235,6 +238,7 @@ struct SettingsView: View {
                             set: { edge in
                                 barEdge = edge
                                 HUDPlacement.save(edge: edge)
+                                app.barPlacementChanged()
                             }
                         )) {
                             ForEach(HUDEdge.allCases) { edge in
@@ -246,6 +250,12 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, Theme.s3)
                     .padding(.vertical, Theme.s2 + 2)
+                    Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
+                    SettingsToggleRow(
+                        title: "Always show the bar",
+                        subtitle: "A small pill between dictations, over full-screen apps too. Click it to dictate.",
+                        isOn: $app.alwaysShowBar
+                    )
                     Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
                     SettingsToggleRow(
                         title: "Sound feedback",

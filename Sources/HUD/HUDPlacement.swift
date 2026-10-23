@@ -39,15 +39,20 @@ enum HUDPlacement {
         UserDefaults.standard.set(edge.rawValue, forKey: edgeKey)
     }
 
-    /// The canvas the pill is drawn in, before the shadow margin.
-    static func canvas(vertical: Bool) -> CGSize {
-        vertical ? CGSize(width: 40, height: 320) : CGSize(width: 320, height: 40)
+    /// Between dictations the resting pill sits closer to the edge.
+    private static let idleMargin: CGFloat = 4
+
+    /// The canvas the pill is drawn in, before the shadow margin. At rest it is
+    /// just big enough for the thin pill to swell on hover.
+    static func canvas(vertical: Bool, idle: Bool = false) -> CGSize {
+        let size = idle ? CGSize(width: 64, height: 24) : CGSize(width: 320, height: 40)
+        return vertical ? CGSize(width: size.height, height: size.width) : size
     }
 
     /// Fixed rather than measured, so a flip between horizontal and vertical
     /// can be sized before SwiftUI has laid the new orientation out.
-    static func windowSize(vertical: Bool) -> NSSize {
-        let canvas = canvas(vertical: vertical)
+    static func windowSize(vertical: Bool, idle: Bool = false) -> NSSize {
+        let canvas = canvas(vertical: vertical, idle: idle)
         let insets = RecordingHUDView.shadowInsets
         return NSSize(
             width: canvas.width + insets.leading + insets.trailing,
@@ -56,8 +61,9 @@ enum HUDPlacement {
     }
 
     /// Screen point the pill is centered on when docked at `edge`.
-    private static func dockCenter(for edge: HUDEdge, in visible: NSRect) -> NSPoint {
-        let canvas = canvas(vertical: edge.isVertical)
+    private static func dockCenter(for edge: HUDEdge, in visible: NSRect, idle: Bool = false) -> NSPoint {
+        let canvas = canvas(vertical: edge.isVertical, idle: idle)
+        let margin = idle ? idleMargin : margin
         switch edge {
         case .bottom: return NSPoint(x: visible.midX, y: visible.minY + margin + canvas.height / 2)
         case .left: return NSPoint(x: visible.minX + margin + canvas.width / 2, y: visible.midY)
@@ -66,11 +72,11 @@ enum HUDPlacement {
     }
 
     /// The bar's window frame when docked at `edge`.
-    static func frame(for edge: HUDEdge, in visible: NSRect) -> NSRect {
-        let size = windowSize(vertical: edge.isVertical)
-        let canvas = canvas(vertical: edge.isVertical)
+    static func frame(for edge: HUDEdge, in visible: NSRect, idle: Bool = false) -> NSRect {
+        let size = windowSize(vertical: edge.isVertical, idle: idle)
+        let canvas = canvas(vertical: edge.isVertical, idle: idle)
         let insets = RecordingHUDView.shadowInsets
-        let center = dockCenter(for: edge, in: visible)
+        let center = dockCenter(for: edge, in: visible, idle: idle)
         return NSRect(
             x: center.x - insets.leading - canvas.width / 2,
             y: center.y - insets.bottom - canvas.height / 2,

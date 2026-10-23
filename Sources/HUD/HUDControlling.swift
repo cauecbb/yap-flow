@@ -1,6 +1,8 @@
 import Foundation
 
 enum HUDPhase: Equatable {
+    // Between dictations, with "Always show the bar" on: a small resting pill.
+    case idle
     case listening
     case confirmCancel
     case transcribing
