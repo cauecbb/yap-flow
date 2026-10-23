@@ -35,6 +35,7 @@ enum DiagnosticLog {
 
     static func write(_ message: String) {
         NSLog("Yap: \(message)")
+        guard !RuntimeMode.isTesting else { return }
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
         queue.async {
             let manager = FileManager.default
