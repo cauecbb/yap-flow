@@ -25,6 +25,8 @@ final class DictationSession: DictationSessioning {
     private let relay = AudioBufferRelay()
     private let recorder = AudioRecorder()
     private var transcriber: StreamingTranscriber?
+    /// The transcriber the microphone is wired to, once it finished starting.
+    private var attached: StreamingTranscriber?
     private(set) var lastRecording: Data?
 
     var onAudio: ((Data) -> Void)? {
@@ -122,7 +124,15 @@ final class DictationSession: DictationSessioning {
             throw error
         }
 
+        // Stopped while the analyzer was still starting up: nothing will feed
+        // or finish this one, so wind it down here.
+        guard transcriber === engine else {
+            Task { _ = try? await engine.finish() }
+            return
+        }
+
         relay.attach { buffer in engine.feed(buffer) }
+        attached = engine
     }
 
     func stop() async throws -> String {
@@ -130,8 +140,17 @@ final class DictationSession: DictationSessioning {
         relay.reset()
         lastRecording = recorder.wav()
         recorder.reset()
-        let text = try await transcriber?.finish() ?? ""
+
+        // The analyzer can take seconds to start after a long idle. Finishing
+        // one that never got going waits forever, so a stop that early has no
+        // on-device transcript; the caller still has the recording.
+        let engine = transcriber
         transcriber = nil
-        return text
+        guard let engine, attached === engine else {
+            attached = nil
+            throw TranscriptionError.notReady
+        }
+        attached = nil
+        return try await engine.finish()
     }
 }

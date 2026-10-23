@@ -258,6 +258,9 @@ final class AppState {
 
     private func bindPushToTalk() {
         pushToTalk.isDictating = { [weak self] in self?.coordinator.state == .recording }
+        pushToTalk.isBusy = { [weak self] in
+            self?.coordinator.state == .recording || self?.coordinator.state == .transcribing
+        }
         pushToTalk.onPress = { [weak self] in
             guard let self, self.coordinator.state == .idle else { return }
             self.hud.setControlsVisible(false)
@@ -283,10 +286,15 @@ final class AppState {
             guard let self else { return }
             Task { await self.coordinator.cancel(silently: true) }
         }
-        // Wispr cancels on the first escape, not the second.
+        // Wispr cancels on the first escape, not the second. While the take is
+        // still being processed, escape gives up on it instead of waiting.
         pushToTalk.onEscape = { [weak self] in
             guard let self else { return }
-            Task { await self.coordinator.cancel() }
+            if self.coordinator.state == .transcribing {
+                self.coordinator.abandonProcessing()
+            } else {
+                Task { await self.coordinator.cancel() }
+            }
         }
         pushToTalk.enabled = pushToTalkFn
         if pushToTalkFn, modifierTrigger == .function { modifierTrigger = .none }

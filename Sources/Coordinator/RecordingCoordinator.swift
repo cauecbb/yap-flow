@@ -27,6 +27,14 @@ final class RecordingCoordinator {
 
     private var startedAt: Date?
 
+    /// Bumped whenever a take is abandoned, so work still in flight for it
+    /// knows not to paste.
+    private var take = 0
+
+    /// How long the on-device transcript may take to finish before the take
+    /// goes on without it.
+    private let localDeadline: Double = 2.5
+
     private var cancelArmed = false
     private var cancelArmTask: Task<Void, Never>?
     private let cancelArmWindow: Duration = .milliseconds(2500)
@@ -70,12 +78,24 @@ final class RecordingCoordinator {
     func cancel(silently: Bool = false) async {
         guard state == .recording else { return }
         disarmCancel()
+        take += 1
         state = .transcribing
         if !silently { sounds.playStop() }
         hud.hide(after: 0)
         takeStream()?.cancel()
-        _ = try? await session.stop()
+        // Stops the mic. Not waited on past the deadline: a stuck analyzer would
+        // otherwise hold the state here and every later press would be ignored.
+        _ = await withDeadline(localDeadline) { try await self.session.stop() }
         state = .idle
+    }
+
+    /// Esc while a take is still being transcribed: give up on it now. Its work
+    /// finishes in the background and is dropped.
+    func abandonProcessing() {
+        guard state == .transcribing else { return }
+        take += 1
+        DiagnosticLog.write("take abandoned while processing")
+        finish()
     }
 
     // Two-step cancel: first press arms it, a second press within the window discards. Prevents a stray Escape (dismissing a menu, say) from destroying a dictation in progress.
@@ -144,7 +164,7 @@ final class RecordingCoordinator {
         do {
             try await session.start()
         } catch {
-            NSLog("Yap: failed to start recording: \(error.localizedDescription)")
+            DiagnosticLog.write("failed to start recording: \(error.localizedDescription)")
             takeStream()?.cancel()
             hud.hide(after: 0)
             state = .idle
@@ -161,88 +181,97 @@ final class RecordingCoordinator {
     private func stopRecording() async {
         disarmCancel()
         state = .transcribing
+        let current = take
         sounds.playStop()
         hud.setPhase(.transcribing)
 
         let releasedAt = Date()
+        func elapsed() -> Int { Int(Date().timeIntervalSince(releasedAt) * 1000) }
+
         // The stream finishes while the on-device transcript does: the task only
         // runs once `session.stop()` has stopped the mic, so no audio is cut off.
         let stream = liveStream
         let streamed = stream.map { stream in Task { await stream.finish() } }
 
-        do {
-            let raw = try await session.stop()
-            _ = takeStream()
-            var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // nil when the on-device transcript didn't come: stopped before the
+        // analyzer was ready, failed, or past the deadline. The recording still
+        // goes to the cloud then.
+        let local = await withDeadline(localDeadline) { try await self.session.stop() }
+        _ = takeStream()
+        guard take == current else {
+            stream?.cancel()
+            return
+        }
+        var text = (local ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cloud = activeCloud
+        DiagnosticLog.write("released; on-device transcript \(local == nil ? "unavailable" : "done") at \(elapsed()) ms")
 
-            // The on-device transcript doubles as the silence check: an empty
-            // take never goes up, so the cloud model can't hallucinate words
-            // into a pause.
+        // A finished, empty on-device transcript is the silence check: that take
+        // never goes up, so the cloud model can't hallucinate words into a pause.
+        // Without one, only the cloud can tell.
+        guard !text.isEmpty || (local == nil && cloud != nil) else {
+            stream?.cancel()
+            finish()
+            return
+        }
+
+        let terms = vocabulary()
+
+        var cloudText = await streamed?.value
+        var path = cloudText == nil ? "on-device" : "live"
+        if cloudText == nil, let cloud, let audio = session.lastRecording {
+            cloudText = await cloud.transcribe(wav: audio, vocabulary: terms)
+            if cloudText != nil { path = "upload" }
+        }
+        guard take == current else { return }
+        DiagnosticLog.write("transcribed via \(path) at \(elapsed()) ms")
+
+        if let cloudText, cloud?.cleansText == true {
+            // SMART mode already removed filler, applied corrections and the
+            // dictionary, and formatted lists.
+            text = cloudText
+        } else {
+            // A cloud transcript as heard beats the on-device one, but still
+            // gets the same cleanup.
+            if let cloudText { text = cloudText }
+
+            // Deterministic passes first: instant, on device, no model needed.
+            text = FillerRemoval.strip(text)
+            if !terms.isEmpty {
+                text = DictionaryCorrection.correctFirstLetterMisses(in: text, terms: terms)
+            }
+
+            // Removing fillers can empty a transcript that was only "um uh".
             guard !text.isEmpty else {
-                stream?.cancel()
-                hud.hide(after: 0)
-                state = .idle
+                finish()
                 return
             }
 
-            let terms = vocabulary()
-
-            let cloud = activeCloud
-            var cloudText = await streamed?.value
-            var path = cloudText == nil ? "on-device" : "live"
-            if cloudText == nil, let cloud, let audio = session.lastRecording {
-                cloudText = await cloud.transcribe(wav: audio, vocabulary: terms)
-                if cloudText != nil { path = "upload" }
+            // Cleanup also applies the dictionary to messier mis-hearings. If you
+            // want your transcript cleaned, you want your names right too, so the
+            // two ride the same setting and run in one pass.
+            if cleanupEnabled(), cleaner.isAvailable {
+                hud.setPhase(.cleaning)
+                text = await cleaner.process(text, cleanup: true, vocabulary: terms)
+                guard take == current else { return }
             }
-            NSLog("Yap: transcribed via \(path) in \(Int(Date().timeIntervalSince(releasedAt) * 1000)) ms after release")
-
-            if let cloudText, cloud?.cleansText == true {
-                // SMART mode already removed filler, applied corrections and the
-                // dictionary, and formatted lists.
-                text = cloudText
-            } else {
-                // A cloud transcript as heard beats the on-device one, but still
-                // gets the same cleanup.
-                if let cloudText { text = cloudText }
-
-                // Deterministic passes first: instant, on device, no model needed.
-                text = FillerRemoval.strip(text)
-                if !terms.isEmpty {
-                    text = DictionaryCorrection.correctFirstLetterMisses(in: text, terms: terms)
-                }
-
-                // Removing fillers can empty a transcript that was only "um uh".
-                guard !text.isEmpty else {
-                    hud.hide(after: 0)
-                    state = .idle
-                    return
-                }
-
-                // Cleanup also applies the dictionary to messier mis-hearings. If you
-                // want your transcript cleaned, you want your names right too, so the
-                // two ride the same setting and run in one pass.
-                if cleanupEnabled(), cleaner.isAvailable {
-                    hud.setPhase(.cleaning)
-                    text = await cleaner.process(text, cleanup: true, vocabulary: terms)
-                }
-            }
-
-            state = .inserting
-            let outcome = await injector.deliver(text)
-            lastOutcome = outcome
-            if case .blockedBySecureInput(let holder) = outcome {
-                NSLog("Yap: paste blocked by secure input held by \(holder ?? "another app"); text left on clipboard")
-            }
-
-            let duration = startedAt.map { Date().timeIntervalSince($0) }
-            history.save(text: text, duration: duration, device: deviceName())
-
-            hud.hide(after: 0)
-        } catch {
-            NSLog("Yap: failed to finish recording: \(error.localizedDescription)")
-            takeStream()?.cancel()
-            hud.hide(after: 0)
         }
+
+        state = .inserting
+        let outcome = await injector.deliver(text)
+        lastOutcome = outcome
+        if case .blockedBySecureInput(let holder) = outcome {
+            DiagnosticLog.write("paste blocked by secure input held by \(holder ?? "another app"); text left on clipboard")
+        }
+
+        let duration = startedAt.map { Date().timeIntervalSince($0) }
+        history.save(text: text, duration: duration, device: deviceName())
+        DiagnosticLog.write("pasted at \(elapsed()) ms")
+        finish()
+    }
+
+    private func finish() {
+        hud.hide(after: 0)
         state = .idle
     }
 }

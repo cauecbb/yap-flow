@@ -11,4 +11,6 @@ enum TranscriptionError: Error {
     case setupFailed
     case invalidFormat
     case unsupportedLocale
+    /// Stopped before the analyzer finished starting, so there is no transcript.
+    case notReady
 }

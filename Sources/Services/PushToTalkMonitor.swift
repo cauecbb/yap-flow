@@ -26,6 +26,8 @@ final class PushToTalkMonitor {
     var onEscape: (() -> Void)?
     /// Whether a dictation is running right now, from whichever trigger started it.
     var isDictating: () -> Bool = { false }
+    /// Recording or still turning the take into text: when escape means "stop".
+    var isBusy: () -> Bool = { false }
 
     private enum Mode { case idle, holding, handsFree }
 
@@ -184,7 +186,7 @@ final class PushToTalkMonitor {
     }
 
     private func handleKeyDown(keyCode: Int64, isRepeat: Bool) -> Bool {
-        if keyCode == Int64(kVK_Escape), isDictating() {
+        if keyCode == Int64(kVK_Escape), isBusy() {
             if !isRepeat {
                 mode = .idle
                 fire(onEscape)
