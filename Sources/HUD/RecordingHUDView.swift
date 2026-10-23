@@ -25,11 +25,12 @@ struct RecordingHUDView: View {
         )
         // A fixed canvas: the panel is sized once on show, and the pill grows
         // inside it when hands-free adds the buttons instead of being clipped.
+        // Not animated: swapping between the resting and the recording pill
+        // resizes the canvas, and easing that drew the pill sliding in from the
+        // old frame for an instant.
         .frame(width: canvas.width, height: canvas.height)
         .padding(Self.shadowInsets)
         .environment(\.colorScheme, .dark)
-        .animation(.spring(duration: 0.22), value: showsButtons)
-        .animation(.easeInOut(duration: 0.18), value: model.phase)
     }
 
     private var activePill: some View {
@@ -56,6 +57,8 @@ struct RecordingHUDView: View {
         .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
         .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
         .contentShape(Capsule(style: .continuous))
+        .animation(.spring(duration: 0.22), value: showsButtons)
+        .animation(.easeInOut(duration: 0.18), value: model.phase)
     }
 
     static let shadowInsets = EdgeInsets(top: 8, leading: 8, bottom: 16, trailing: 8)

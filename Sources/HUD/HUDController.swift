@@ -87,9 +87,13 @@ final class HUDController: HUDControlling {
         prepare()
         guard let panel else { return }
 
-        panel.alphaValue = 0
+        // Already on screen as the resting pill: swap in place. Fading out and
+        // back in from there read as a flicker on every tap of fn.
+        let resting = panel.isVisible && panel.alphaValue > 0
+        if !resting { panel.alphaValue = 0 }
         panel.reposition()
         panel.orderFrontRegardless()
+        guard !resting else { return }
 
         // Short fade covers any residual first-frame layout settling.
         NSAnimationContext.runAnimationGroup { context in
