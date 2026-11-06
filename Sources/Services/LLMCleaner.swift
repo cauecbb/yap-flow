@@ -19,8 +19,33 @@ enum LLMCleaner {
             throw ProviderError(message: "\(service.title): set a cleanup model in Settings")
         }
         let system = TranscriptCleanupService.instructions(cleanup: true, vocabulary: vocabulary) + "\n\n" + replyRule
-        let prompt = TranscriptCleanupService.prompt(for: text)
+        let edited = try await edit(text, system: system, service: service, apiKey: apiKey, model: model)
+        guard !edited.isEmpty,
+              TranscriptCleanupService.isFaithful(input: text, output: edited, vocabulary: vocabulary)
+        else {
+            throw ProviderError(message: "\(service.title) answered the dictation instead of editing it; pasted it as heard")
+        }
+        return edited
+    }
 
+    /// Word-for-word mode: punctuation and capitals only. Throws when the model
+    /// touched a word, so the caller pastes the transcript as heard.
+    static func punctuate(_ text: String, service: AIService, apiKey: String?, model: String) async throws -> String {
+        guard !model.isEmpty else {
+            throw ProviderError(message: "\(service.title): set a cleanup model in Settings")
+        }
+        let system = TranscriptCleanupService.punctuationInstructions + "\n\n" + replyRule
+        let edited = try await edit(text, system: system, service: service, apiKey: apiKey, model: model)
+        guard !edited.isEmpty, TranscriptCleanupService.keepsWords(input: text, output: edited) else {
+            throw ProviderError(message: "\(service.title) changed words while punctuating; pasted it as heard")
+        }
+        return edited
+    }
+
+    private static func edit(
+        _ text: String, system: String, service: AIService, apiKey: String?, model: String
+    ) async throws -> String {
+        let prompt = TranscriptCleanupService.prompt(for: text)
         let raw: String
         switch service {
         case .anthropic:
@@ -30,14 +55,7 @@ enum LLMCleaner {
         case .openai, .groq, .custom:
             raw = try await chat(system: system, prompt: prompt, service: service, apiKey: apiKey, model: model)
         }
-
-        let edited = tidy(raw)
-        guard !edited.isEmpty,
-              TranscriptCleanupService.isFaithful(input: text, output: edited, vocabulary: vocabulary)
-        else {
-            throw ProviderError(message: "\(service.title) answered the dictation instead of editing it; pasted it as heard")
-        }
-        return edited
+        return tidy(raw)
     }
 
     /// Drops reasoning a model leaked into its answer and transcript tags it echoed.

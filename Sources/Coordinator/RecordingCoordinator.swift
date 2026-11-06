@@ -23,6 +23,7 @@ final class RecordingCoordinator {
     private let deviceName: () -> String?
     private let cloud: CloudTranscribing?
     private let cloudEnabled: () -> Bool
+    private let wordForWord: () -> Bool
     private var liveStream: CloudStream?
 
     private var startedAt: Date?
@@ -50,7 +51,8 @@ final class RecordingCoordinator {
         vocabulary: @escaping () -> [String],
         deviceName: @escaping () -> String?,
         cloud: CloudTranscribing? = nil,
-        cloudEnabled: @escaping () -> Bool = { false }
+        cloudEnabled: @escaping () -> Bool = { false },
+        wordForWord: @escaping () -> Bool = { false }
     ) {
         self.session = session
         self.injector = injector
@@ -63,6 +65,7 @@ final class RecordingCoordinator {
         self.deviceName = deviceName
         self.cloud = cloud
         self.cloudEnabled = cloudEnabled
+        self.wordForWord = wordForWord
 
         session.onLevel = { [weak self] level in self?.hud.setLevel(level) }
         session.onPartial = { [weak self] text in self?.hud.setPartial(text) }
@@ -247,10 +250,18 @@ final class RecordingCoordinator {
                 return
             }
 
-            // Cleanup also applies the dictionary to messier mis-hearings. If you
-            // want your transcript cleaned, you want your names right too, so the
-            // two ride the same setting and run in one pass.
-            if cleanupEnabled(), cleaner.isAvailable {
+            if wordForWord() {
+                // Every word stays as spoken: no rewrite, only punctuation, and
+                // only when the transcript came without it.
+                if cleanupEnabled(), cleaner.isAvailable, TranscriptCleanupService.needsPunctuation(text) {
+                    hud.setPhase(.cleaning)
+                    text = await cleaner.punctuate(text)
+                    guard take == current else { return }
+                }
+            } else if cleanupEnabled(), cleaner.isAvailable {
+                // Cleanup also applies the dictionary to messier mis-hearings. If
+                // you want your transcript cleaned, you want your names right too,
+                // so the two ride the same setting and run in one pass.
                 hud.setPhase(.cleaning)
                 text = await cleaner.process(text, cleanup: true, vocabulary: terms)
                 guard take == current else { return }

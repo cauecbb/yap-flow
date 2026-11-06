@@ -172,6 +172,17 @@ struct ProviderRequestTests {
         #expect(config?["customVocabulary"] as? [String] == ["Decola"])
     }
 
+    @Test func geminiWordForWordLeavesTheModeAtVerbatim() async throws {
+        StubProtocol.install(body: #"{"candidates": [{"content": {"parts": [{"text": "Oi, tudo bem?"}]}}]}"#)
+        _ = try await GeminiAPI.transcribe(
+            wav: wav, vocabulary: ["Decola"], apiKey: "AIza", model: "gemini-3.5-transcribe", smart: false
+        )
+
+        let config = (StubProtocol.sentJSON["generationConfig"] as? [String: Any])?["audioTranscriptionConfig"] as? [String: Any]
+        #expect(config?["mode"] == nil)
+        #expect(config?["customVocabulary"] as? [String] == ["Decola"])
+    }
+
     @Test func anAnswerInsteadOfAnEditIsRejected() async throws {
         StubProtocol.install(body: #"{"choices": [{"message": {"content": "Sure! Here are some productivity tips for organizing your workday efficiently."}}]}"#)
         await #expect(throws: ProviderError.self) {

@@ -95,6 +95,12 @@ final class AppState {
         didSet { UserDefaults.standard.set(showInMenuBar, forKey: "showInMenuBar") }
     }
 
+    /// Every word as spoken, slips included: no rewriting, only punctuation.
+    /// AIConfig reads the same key for the Gemini request.
+    var wordForWord: Bool {
+        didSet { UserDefaults.standard.set(wordForWord, forKey: AIConfig.wordForWordKey) }
+    }
+
     /// "system" follows the OS locale; otherwise a BCP-47 identifier.
     var dictationLanguage: String {
         didSet {
@@ -144,6 +150,7 @@ final class AppState {
             ?? ((defaults.object(forKey: "geminiEnabled") as? Bool) == false ? .onDevice : .gemini)
         cleanupProvider = CleanupProvider(rawValue: defaults.string(forKey: "cleanupProvider") ?? "")
             ?? (((defaults.object(forKey: "cleanupEnabled") as? Bool) ?? false) ? .apple : .off)
+        wordForWord = AIConfig.wordForWord
         modifierTrigger = ModifierTrigger(
             rawValue: UserDefaults.standard.string(forKey: "modifierTrigger") ?? ""
         ) ?? .none
@@ -179,7 +186,8 @@ final class AppState {
             vocabulary: { [weak self] in self?.vocabulary.terms ?? [] },
             deviceName: { [weak self] in self?.currentInputName },
             cloud: cloud,
-            cloudEnabled: { [weak self] in self?.transcriptionProvider != .onDevice }
+            cloudEnabled: { [weak self] in self?.transcriptionProvider != .onDevice },
+            wordForWord: { [weak self] in self?.wordForWord ?? false }
         )
 
         dictation.contextualStrings = { [weak self] in self?.vocabulary.terms ?? [] }

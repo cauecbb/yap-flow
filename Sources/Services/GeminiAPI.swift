@@ -4,26 +4,30 @@ import Foundation
 /// SMART mode (filler and false starts removed, spoken self-corrections
 /// applied, lists and numbers formatted, Portuguese and English mixed in one
 /// sentence handled without picking a language up front), plus plain text
-/// cleanup for when another provider transcribed.
+/// cleanup for when another provider transcribed. With `smart` off it runs in
+/// its default VERBATIM mode: every word as spoken, nothing rewritten.
 enum GeminiAPI {
     static let host = "https://generativelanguage.googleapis.com"
 
     /// The docs advise about 100 terms for the best biasing.
     private static let maximumVocabulary = 100
 
-    private static func transcriptionConfig(vocabulary: [String]) -> [String: Any] {
-        var config: [String: Any] = ["mode": "SMART"]
+    private static func transcriptionConfig(vocabulary: [String], smart: Bool) -> [String: Any] {
+        // No mode is VERBATIM, the model's default.
+        var config: [String: Any] = smart ? ["mode": "SMART"] : [:]
         let terms = Array(vocabulary.prefix(maximumVocabulary))
         if !terms.isEmpty { config["customVocabulary"] = terms }
         if !AIConfig.languageCodes.isEmpty { config["languageCodes"] = AIConfig.languageCodes }
         return config
     }
 
-    static func transcribeRequest(wav: Data, vocabulary: [String], apiKey: String, model: String) throws -> URLRequest {
+    static func transcribeRequest(
+        wav: Data, vocabulary: [String], apiKey: String, model: String, smart: Bool = true
+    ) throws -> URLRequest {
         let url = try ProviderHTTP.url("\(host)/v1beta/models/\(model):generateContent", service: "Gemini")
         let body: [String: Any] = [
             "contents": [["parts": [["inlineData": ["mimeType": "audio/wav", "data": wav.base64EncodedString()]]]]],
-            "generationConfig": ["audioTranscriptionConfig": transcriptionConfig(vocabulary: vocabulary)],
+            "generationConfig": ["audioTranscriptionConfig": transcriptionConfig(vocabulary: vocabulary, smart: smart)],
         ]
         return ProviderHTTP.post(url, headers: [
             "x-goog-api-key": apiKey,
@@ -32,16 +36,20 @@ enum GeminiAPI {
     }
 
     /// The whole take in one request, after release.
-    static func transcribe(wav: Data, vocabulary: [String], apiKey: String, model: String) async throws -> String {
+    static func transcribe(
+        wav: Data, vocabulary: [String], apiKey: String, model: String, smart: Bool = true
+    ) async throws -> String {
         let json = try await ProviderHTTP.json(
-            transcribeRequest(wav: wav, vocabulary: vocabulary, apiKey: apiKey, model: model), service: "Gemini"
+            transcribeRequest(wav: wav, vocabulary: vocabulary, apiKey: apiKey, model: model, smart: smart),
+            service: "Gemini"
         )
         return text(of: json)
     }
 
     /// Streams the take while it is spoken; see GeminiLiveSession.
     static func beginStream(
-        vocabulary: [String], apiKey: String, model: String, onError: @escaping (String) -> Void
+        vocabulary: [String], apiKey: String, model: String, smart: Bool = true,
+        onError: @escaping (String) -> Void
     ) -> CloudStream? {
         guard var components = URLComponents(
             string: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
@@ -54,7 +62,7 @@ enum GeminiAPI {
             "generationConfig": ["responseModalities": ["TEXT"]],
             // Push-to-talk: the release ends the turn, not a pause.
             "realtimeInputConfig": ["automaticActivityDetection": ["disabled": true]],
-            "inputAudioTranscription": transcriptionConfig(vocabulary: vocabulary),
+            "inputAudioTranscription": transcriptionConfig(vocabulary: vocabulary, smart: smart),
         ])
         stream.onError = onError
         stream.start()

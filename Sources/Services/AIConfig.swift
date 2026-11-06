@@ -149,6 +149,15 @@ enum AIConfig {
         (UserDefaults.standard.object(forKey: "geminiStreaming") as? Bool) ?? true
     }
 
+    static let wordForWordKey = "wordForWord"
+
+    /// Word for word: every word as spoken, false starts and slips included.
+    /// Gemini transcribes verbatim instead of in SMART mode, and the cleanup
+    /// pass only adds punctuation instead of rewriting.
+    static var wordForWord: Bool {
+        (UserDefaults.standard.object(forKey: wordForWordKey) as? Bool) ?? false
+    }
+
     /// For Custom: any OpenAI-compatible API, e.g. https://openrouter.ai/api/v1.
     static var customBaseURL: String {
         var url = (UserDefaults.standard.string(forKey: customBaseURLKey) ?? "")

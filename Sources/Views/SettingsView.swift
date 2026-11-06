@@ -335,7 +335,7 @@ struct SettingsView: View {
 
 /// Label on the left, switch hard-right. Using `Toggle`'s own label would let
 /// each row's text width push its switch to a different x, leaving the column ragged.
-private struct SettingsToggleRow: View {
+struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
     @Binding var isOn: Bool

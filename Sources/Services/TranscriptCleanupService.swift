@@ -9,6 +9,9 @@ protocol TranscriptCleaning: AnyObject {
     /// the filler/punctuation edit; a non-empty `vocabulary` applies the user's
     /// dictionary. With both set it does both in a single pass.
     func process(_ text: String, cleanup: Bool, vocabulary: [String]) async -> String
+    /// Word-for-word mode: adds punctuation and capitals and nothing else. The
+    /// transcript comes back unchanged if any word would change.
+    func punctuate(_ text: String) async -> String
 }
 
 /// Post-processes a finished transcript with the on-device Apple Intelligence
@@ -96,6 +99,36 @@ final class TranscriptCleanupService: TranscriptCleaning {
         "Edit this transcript:\n<transcript>\n\(text)\n</transcript>"
     }
 
+    /// Word-for-word mode, shared with the cloud cleanup (LLMCleaner).
+    nonisolated static let punctuationInstructions = preamble + "\n\n" + """
+        Add punctuation, capitalization, and sentence breaks to the transcript. \
+        That is the only edit. Keep every word exactly as spoken and in the same \
+        order, including filler words, repetitions, false starts, and mistakes. \
+        Never remove, add, reorder, correct, or translate a word, and never turn \
+        spoken numbers into digits.
+        """
+
+    /// Punctuating can't change the words: the output must hold the input's
+    /// words, in order, with only case and punctuation different.
+    nonisolated static func keepsWords(input: String, output: String) -> Bool {
+        func words(_ s: String) -> [String] {
+            s.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+        }
+        return words(input) == words(output)
+    }
+
+    /// Whether a word-for-word transcript came without punctuation. Gemini
+    /// usually punctuates on its own, and then the extra pass would only add
+    /// wait before the paste.
+    nonisolated static func needsPunctuation(_ text: String) -> Bool {
+        let words = text.split(whereSeparator: \.isWhitespace).count
+        guard words >= 4 else { return false }
+        let marks = text.filter { ".,?!;:".contains($0) }.count
+        return marks == 0 || words / marks > 25
+    }
+
     var isAvailable: Bool { SystemLanguageModel.default.isAvailable }
 
     /// Loads the model ahead of the first dictation so the first paste doesn't
@@ -109,10 +142,26 @@ final class TranscriptCleanupService: TranscriptCleaning {
         guard isAvailable, (cleanup || !vocabulary.isEmpty), text.count <= Self.maxCleanupLength else {
             return text
         }
+        let instructions = Self.instructions(cleanup: cleanup, vocabulary: vocabulary)
+        guard let edited = await edit(text, instructions: instructions),
+              Self.isFaithful(input: text, output: edited, vocabulary: vocabulary)
+        else { return text }
+        return edited
+    }
 
+    func punctuate(_ text: String) async -> String {
+        guard isAvailable, text.count <= Self.maxCleanupLength else { return text }
+        guard let edited = await edit(text, instructions: Self.punctuationInstructions),
+              Self.keepsWords(input: text, output: edited)
+        else { return text }
+        return edited
+    }
+
+    /// The model's edit, or nil when it failed, timed out or came back empty.
+    private func edit(_ text: String, instructions: String) async -> String? {
         // Fresh session per transcript: dictations are independent, and a reused
         // session would accumulate them all in its context window.
-        let session = LanguageModelSession(instructions: Self.instructions(cleanup: cleanup, vocabulary: vocabulary))
+        let session = LanguageModelSession(instructions: instructions)
         let prompt = Self.prompt(for: text)
 
         let respond = Task {
@@ -132,14 +181,11 @@ final class TranscriptCleanupService: TranscriptCleaning {
         do {
             let edited = try await respond.value
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !edited.isEmpty, Self.isFaithful(input: text, output: edited, vocabulary: vocabulary) else {
-                return text
-            }
-            return edited
+            return edited.isEmpty ? nil : edited
         } catch {
-            // Timeout, guardrail refusal, context overflow — all land here.
+            // Timeout, guardrail refusal, context overflow: all land here.
             NSLog("Yap: transcript post-processing fell back to the raw text: \(error.localizedDescription)")
-            return text
+            return nil
         }
     }
 

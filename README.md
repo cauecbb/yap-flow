@@ -53,6 +53,8 @@ Tudo fica em Open Yap... (ícone na barra de menu), na seção AI. São duas esc
 - **Transcription**: quem transforma a fala em texto. Gemini, OpenAI, Groq, Custom ou On-device only.
 - **Cleanup**: quem limpa o texto depois. Gemini, OpenAI, Claude, Groq, Custom, Apple Intelligence ou Off. O Gemini já faz a limpeza junto com a transcrição, então quando ele transcreve essa opção fica desligada. O Claude só aparece aqui porque não transcreve áudio.
 
+Entre as duas fica a chave **Word for word**. Ligada, o texto sai palavra por palavra, com repetição, falso começo e palavra errada do jeito que você falou: o Gemini transcreve no modo verbatim em vez do SMART, e a limpeza só põe pontuação quando o texto chega sem ela. Se o modelo da limpeza mudar qualquer palavra ao pontuar, o app descarta e cola o texto como veio. Só os "hã" e "uh" soltos continuam saindo.
+
 Ao escolher um provedor, aparecem os campos da chave e do modelo. A chave fica guardada no Keychain do macOS. O modelo pode ficar em branco pra usar o padrão:
 
 | Provedor | Transcrição | Limpeza | Onde pegar a chave |

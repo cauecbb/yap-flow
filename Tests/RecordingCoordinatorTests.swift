@@ -67,6 +67,14 @@ final class FakeCleaner: TranscriptCleaning {
         cleaned.append(text)
         return transform(text)
     }
+
+    var punctuation: (String) -> String = { $0 }
+    var punctuated: [String] = []
+
+    func punctuate(_ text: String) async -> String {
+        punctuated.append(text)
+        return punctuation(text)
+    }
 }
 
 @MainActor
@@ -77,7 +85,8 @@ private func makeCoordinator(
     hud: FakeHUD? = nil,
     cleaner: FakeCleaner? = nil,
     cleanupEnabled: Bool = false,
-    vocabulary: [String] = []
+    vocabulary: [String] = [],
+    wordForWord: Bool = false
 ) -> RecordingCoordinator {
     RecordingCoordinator(
         session: session ?? FakeSession(),
@@ -88,12 +97,50 @@ private func makeCoordinator(
         cleaner: cleaner ?? FakeCleaner(),
         cleanupEnabled: { cleanupEnabled },
         vocabulary: { vocabulary },
-        deviceName: { "Test Mic" }
+        deviceName: { "Test Mic" },
+        wordForWord: { wordForWord }
     )
 }
 
 @MainActor
 struct RecordingCoordinatorTests {
+    @Test func wordForWordPastesEveryWordWithoutTheRewrite() async {
+        let session = FakeSession()
+        session.textToReturn = "Então, tipo, a gente vai vai subir isso pra prod amanhã."
+        let injector = FakeInjector()
+        let cleaner = FakeCleaner()
+        cleaner.transform = { _ in "A gente vai subir isso pra prod amanhã." }
+        let coordinator = makeCoordinator(
+            session: session, injector: injector, cleaner: cleaner, cleanupEnabled: true, wordForWord: true
+        )
+
+        await coordinator.toggle()
+        await coordinator.toggle()
+
+        // Already punctuated: no rewrite and no punctuation pass either.
+        #expect(injector.delivered == ["Então, tipo, a gente vai vai subir isso pra prod amanhã."])
+        #expect(cleaner.cleaned.isEmpty)
+        #expect(cleaner.punctuated.isEmpty)
+    }
+
+    @Test func wordForWordOnlyPunctuatesWhenTheTranscriptHasNone() async {
+        let session = FakeSession()
+        session.textToReturn = "então tipo a gente vai vai subir isso pra prod amanhã"
+        let injector = FakeInjector()
+        let cleaner = FakeCleaner()
+        cleaner.punctuation = { _ in "Então, tipo, a gente vai vai subir isso pra prod amanhã." }
+        let coordinator = makeCoordinator(
+            session: session, injector: injector, cleaner: cleaner, cleanupEnabled: true, wordForWord: true
+        )
+
+        await coordinator.toggle()
+        await coordinator.toggle()
+
+        #expect(cleaner.punctuated == ["então tipo a gente vai vai subir isso pra prod amanhã"])
+        #expect(cleaner.cleaned.isEmpty)
+        #expect(injector.delivered == ["Então, tipo, a gente vai vai subir isso pra prod amanhã."])
+    }
+
     @Test func startsIdle() {
         let coordinator = makeCoordinator()
         #expect(coordinator.state == .idle)

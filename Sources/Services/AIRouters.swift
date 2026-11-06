@@ -45,7 +45,9 @@ final class CloudTranscriptionRouter: CloudTranscribing {
         return keys.has(service)
     }
 
-    var cleansText: Bool { provider() == .gemini }
+    /// Not in word-for-word mode: Gemini transcribes verbatim then, and the
+    /// text goes through the punctuation-only pass like any other.
+    var cleansText: Bool { provider() == .gemini && !AIConfig.wordForWord }
 
     func warmUp() {
         guard isConfigured, let service = provider().service else { return }
@@ -59,7 +61,9 @@ final class CloudTranscriptionRouter: CloudTranscribing {
 
     func beginStream(vocabulary: [String]) -> CloudStream? {
         guard provider() == .gemini, AIConfig.geminiStreaming, let key = keys.key(for: .gemini) else { return nil }
-        return GeminiAPI.beginStream(vocabulary: vocabulary, apiKey: key, model: AIConfig.geminiLiveModel) { [weak self] message in
+        return GeminiAPI.beginStream(
+            vocabulary: vocabulary, apiKey: key, model: AIConfig.geminiLiveModel, smart: !AIConfig.wordForWord
+        ) { [weak self] message in
             Task { @MainActor in self?.report(message) }
         }
     }
@@ -72,7 +76,8 @@ final class CloudTranscriptionRouter: CloudTranscribing {
             switch service {
             case .gemini:
                 text = try await GeminiAPI.transcribe(
-                    wav: wav, vocabulary: vocabulary, apiKey: keys.key(for: .gemini) ?? "", model: model
+                    wav: wav, vocabulary: vocabulary, apiKey: keys.key(for: .gemini) ?? "", model: model,
+                    smart: !AIConfig.wordForWord
                 )
             case .openai, .groq, .custom:
                 text = try await OpenAICompatibleTranscriber.transcribe(
@@ -136,6 +141,24 @@ final class CleanupRouter: TranscriptCleaning {
             return edited
         } catch {
             NSLog("Yap: cleanup fell back to the raw text: \(error.localizedDescription)")
+            lastError = error.localizedDescription
+            return text
+        }
+    }
+
+    func punctuate(_ text: String) async -> String {
+        let choice = provider()
+        if choice == .apple { return await apple.punctuate(text) }
+        guard let service = choice.service else { return text }
+
+        do {
+            let edited = try await LLMCleaner.punctuate(
+                text, service: service, apiKey: keys.key(for: service), model: AIConfig.model(service, .cleanup)
+            )
+            lastError = nil
+            return edited
+        } catch {
+            NSLog("Yap: punctuation fell back to the raw text: \(error.localizedDescription)")
             lastError = error.localizedDescription
             return text
         }

@@ -21,6 +21,14 @@ struct AISettingsSection: View {
 
                     divider
 
+                    SettingsToggleRow(
+                        title: "Word for word",
+                        subtitle: "Keeps every word as you said it, slips included. Only adds punctuation.",
+                        isOn: $app.wordForWord
+                    )
+
+                    divider
+
                     PickerRow(
                         title: "Cleanup",
                         subtitle: cleanupSubtitle,
@@ -53,12 +61,14 @@ struct AISettingsSection: View {
         Divider().overlay(Theme.hairline).padding(.horizontal, Theme.s3)
     }
 
-    private var geminiCleansUp: Bool { app.transcriptionProvider == .gemini }
+    private var geminiCleansUp: Bool { app.transcriptionProvider == .gemini && !app.wordForWord }
 
     private var transcriptionSubtitle: String {
         switch app.transcriptionProvider {
         case .gemini:
-            return "Streams while you talk. Cleans up and handles mixed languages on its own."
+            return app.wordForWord
+                ? "Streams while you talk. Handles mixed languages on its own."
+                : "Streams while you talk. Cleans up and handles mixed languages on its own."
         case .onDevice:
             return "Apple's speech model, on your Mac. One language at a time."
         case .openai, .groq, .custom:
@@ -68,6 +78,9 @@ struct AISettingsSection: View {
 
     private var cleanupSubtitle: String {
         if geminiCleansUp { return "Gemini already cleans up." }
+        if app.wordForWord, app.cleanupProvider != .off {
+            return "Word for word: only punctuates a transcript that came without it."
+        }
         switch app.cleanupProvider {
         case .off:
             return "Pastes the transcript as heard."
