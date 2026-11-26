@@ -17,6 +17,7 @@ Você segura o fn, fala e solta, e o texto é colado no app em que você estava 
 - Se a API falhar ou não tiver chave, ele usa o reconhecimento de voz da Apple, que roda no Mac.
 - A barrinha de gravação é uma pílula preta pequena. Dá pra arrastar ela pra baixo ou pras laterais, e nas laterais ela fica na vertical.
 - Sons novos e configuráveis, e ajustes pra português.
+- Janela de app com barra lateral (Home, History, Dictionary e Settings). A Home mostra quantas palavras você já ditou, sua velocidade em palavras por minuto, os dias seguidos de uso e o tempo economizado em relação a digitar, com os últimos ditados agrupados por dia.
 
 ## Requisitos
 
@@ -48,7 +49,7 @@ O macOS faz isso por padrão. Em Ajustes do Sistema > Teclado, troque a opção 
 
 ## Escolhendo a API
 
-Tudo fica em Open Yap... (ícone na barra de menu), na seção AI. São duas escolhas:
+Tudo fica em Open Yap... (ícone na barra de menu) > Settings, na seção AI. São duas escolhas:
 
 - **Transcription**: quem transforma a fala em texto. Gemini, OpenAI, Groq, Custom ou On-device only.
 - **Cleanup**: quem limpa o texto depois. Gemini, OpenAI, Claude, Groq, Custom, Apple Intelligence ou Off. O Gemini já faz a limpeza junto com a transcrição, então quando ele transcreve essa opção fica desligada. O Claude só aparece aqui porque não transcreve áudio.
@@ -107,7 +108,7 @@ defaults write com.frigade.Yap dictationLanguage pt-BR
 
 Combinações com fn, como setas, delete e F1 a F12, continuam funcionando normalmente.
 
-A posição da barrinha pode ser escolhida arrastando ou em Open Yap... > Bar position.
+A posição da barrinha pode ser escolhida arrastando ou em Open Yap... > Settings > Bar position.
 
 ## Sons
 

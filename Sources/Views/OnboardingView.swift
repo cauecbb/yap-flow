@@ -69,9 +69,9 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
 
-            Button(app.permissions.allGranted ? "Continue to Settings" : "Continue") {
+            Button("Continue") {
                 NSApp.keyWindow?.close()
-                app.openMain(page: .settings)
+                app.openMain(page: .home)
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!app.permissions.allGranted)

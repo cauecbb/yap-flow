@@ -28,8 +28,9 @@ struct YapApp: App {
                 app.toggleRecording()
             }
             Divider()
-            Button("Open Yap…") { app.openMain(page: .settings) }
+            Button("Open Yap…") { app.openMain(page: .home) }
             Button("Recording History…") { app.openMain(page: .history) }
+            Button("Settings…") { app.openMain(page: .settings) }
             Divider()
             Button("About Yap") { app.openAbout() }
             Button("Quit Yap") { NSApplication.shared.terminate(nil) }

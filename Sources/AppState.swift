@@ -41,7 +41,7 @@ final class AppState {
         }
     }
 
-    var mainPage: MainPage = .settings
+    var mainPage: MainPage = .home
 
     var modifierTrigger: ModifierTrigger {
         didSet {
@@ -377,13 +377,15 @@ final class AppState {
         }
     }
 
-    /// Settings and History are pages within one window, not separate windows,
-    /// so transcripts are always a click away.
-    func openMain(page: MainPage = .settings) {
+    /// Home, History, Dictionary and Settings are pages of one window with a
+    /// sidebar, so transcripts are always a click away.
+    func openMain(page: MainPage = .home) {
         mainPage = page
         WindowManager.shared.show(
-            id: "main", title: "Yap",
-            size: NSSize(width: 460, height: 740)
+            id: "main", title: "Yap Flow",
+            size: NSSize(width: 920, height: 660),
+            minSize: NSSize(width: 760, height: 520),
+            fullSizeContent: true
         ) {
             MainWindowView()
                 .environment(self)

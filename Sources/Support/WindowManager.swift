@@ -13,6 +13,8 @@ final class WindowManager {
         title: String,
         size: NSSize,
         resizable: Bool = true,
+        minSize: NSSize? = nil,
+        fullSizeContent: Bool = false,
         @ViewBuilder content: () -> Content
     ) {
         if let existing = windows[id] {
@@ -26,10 +28,14 @@ final class WindowManager {
         window.title = title
         var style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable]
         if resizable { style.insert(.resizable) }
+        // Lets the content (a sidebar, say) run under the title bar.
+        if fullSizeContent { style.insert(.fullSizeContentView) }
         window.styleMask = style
         window.setContentSize(size)
+        if let minSize { window.contentMinSize = minSize }
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
+        if fullSizeContent { window.titleVisibility = .hidden }
         window.center()
 
         windows[id] = window

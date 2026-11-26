@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DictionaryView: View {
     @Environment(AppState.self) private var app
-    let onBack: () -> Void
+    var onBack: (() -> Void)?
 
     @State private var newTerm = ""
 
@@ -12,7 +12,9 @@ struct DictionaryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "Dictionary", onBack: onBack)
+            if let onBack {
+                PageHeader(title: "Dictionary", onBack: onBack)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.s4) {
